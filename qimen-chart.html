@@ -1908,19 +1908,8 @@
      不需要靠這層遮罩額外處理。由openTravelMode()/closeTravelMode()切換body這個class。 */
   body.travel-fullscreen-active .status-bar-mask { opacity: 0; }
 
-  /* 2026.09新增：橫向鎖定提示遮罩（僅網頁版有效——Safari/行動瀏覽器沒有真正禁止旋轉的API，
-     只能偵測到橫向時蓋一層提示畫面擋住操作；App版靠Xcode「Supported Interface Orientations」
-     原生設定拿掉Landscape即可從OS層級直接不觸發旋轉，不需要這層遮罩） */
-  #landscape-lock-overlay { display: none; }
-  @media (orientation: landscape) {
-    #landscape-lock-overlay {
-      display: flex; position: fixed; inset: 0; z-index: 99999;
-      background: #f4efe4; flex-direction: column; align-items: center; justify-content: center;
-      gap: 12px; padding: 24px; text-align: center;
-    }
-    #landscape-lock-overlay .icon { font-size: 40px; }
-    #landscape-lock-overlay .msg { font-size: 15px; color: #555; }
-  }
+  /* 2026.09移除：橫向鎖定提示遮罩（原本擋住橫向顯示，2026.09.08 Eric要求拿掉——
+     平板使用時橫向是常見合理情境，不該強制擋下） */
 </style>
 </head>
 <body>
@@ -9315,10 +9304,5 @@ function deleteRecord(id) {
   </div>
 </div><!-- end footer-stack -->
 </div><!-- end page -->
-  <!-- 2026.09新增：橫向鎖定提示遮罩，只在網頁版有作用（見CSS說明），App版靠Xcode原生設定 -->
-  <div id="landscape-lock-overlay">
-    <div class="icon">📱</div>
-    <div class="msg">請將手機轉回直向使用</div>
-  </div>
 </body>
 </html>
