@@ -1506,7 +1506,9 @@
      改回獨立按鈕——指針只負責羅盤授權/啟動，跟陰盤指針行為一致，不再兼職旋轉。
      位置緊貼全螢幕展開鈕左邊，同一列（top對齊），右移距離＝按鈕寬30px＋間距8px＝38px，
      跟右側直排（展開/眼睛/吉）的38px間距慣例一致。 */
-  .travel-inline-rotate { display: none; position: absolute; z-index: 5; top: -8px; right: 30px; font-size: 14px; }
+  .travel-inline-rotate { display: none; position: absolute; z-index: 5; top: -8px; right: 30px; font-size: 30px; transform: translate(2px, -2px); }
+  /* 符號本身在圈內的位置微調（2026.09，Eric用獨立預覽頁拉桿調校定案）：圓圈本身仍固定30x30px、
+     位置不動，只有符號放大+位移，符號放大到30px會略超出圈外，是刻意的視覺選擇（更醒目） */
   .outer.travel-map-mode .travel-inline-rotate { display: flex; }
   /* 已轉正（北上南下）時變色，呼應原本.compass-rotate-bracket的變色提示，讓使用者看得出目前狀態 */
   .outer.travel-map-mode.travel-map-rotated .travel-inline-rotate { background: #2471a3; color: #fff; }
@@ -1905,6 +1907,20 @@
      safe-area-inset-top正確避開瀏海（見.travel-overlay .leaflet-top.leaflet-right等規則），
      不需要靠這層遮罩額外處理。由openTravelMode()/closeTravelMode()切換body這個class。 */
   body.travel-fullscreen-active .status-bar-mask { opacity: 0; }
+
+  /* 2026.09新增：橫向鎖定提示遮罩（僅網頁版有效——Safari/行動瀏覽器沒有真正禁止旋轉的API，
+     只能偵測到橫向時蓋一層提示畫面擋住操作；App版靠Xcode「Supported Interface Orientations」
+     原生設定拿掉Landscape即可從OS層級直接不觸發旋轉，不需要這層遮罩） */
+  #landscape-lock-overlay { display: none; }
+  @media (orientation: landscape) {
+    #landscape-lock-overlay {
+      display: flex; position: fixed; inset: 0; z-index: 99999;
+      background: #f4efe4; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 24px; text-align: center;
+    }
+    #landscape-lock-overlay .icon { font-size: 40px; }
+    #landscape-lock-overlay .msg { font-size: 15px; color: #555; }
+  }
 </style>
 </head>
 <body>
@@ -4647,7 +4663,7 @@ function setTravelInlineLuckyActive(active) {
 function autoMarkTravelLucky() {
   if (!_currentCastChart) return 0;
   const LUCKY_GATES = ['開門', '休門', '生門', '景門'];
-  const hits = matchGates(_currentCastChart, LUCKY_GATES, null, {});
+  const hits = matchGates(_currentCastChart, LUCKY_GATES, null, { isWuBuYu: _currentCastChart.isWuBuYu });
   const usableHouses = new Set(hits.filter(h => !h.excluded).map(h => h.house));
   TRAVEL_MARK_HOUSES.forEach(h => {
     travelMarks[h] = usableHouses.has(h) ? '吉' : null;
@@ -6020,7 +6036,7 @@ function buildTrackSummary() {
   const durationMs = computeTrackLiveElapsedMs();
   const durationText = formatTrackDuration(durationMs);
 
-  const hits = travelTrackChartSnapshot ? matchGates(travelTrackChartSnapshot, null, null, {}) : [];
+  const hits = travelTrackChartSnapshot ? matchGates(travelTrackChartSnapshot, null, null, { isWuBuYu: travelTrackChartSnapshot.isWuBuYu }) : [];
   const hitsByHouse = {};
   hits.forEach(h => { hitsByHouse[h.house] = h; });
 
@@ -8702,9 +8718,15 @@ function castChart() {
     document.getElementById('hb-zhishi').textContent = chart.dutyGateName || '—';
 
     try {
-      // 五不遇時：時剋日、同性相剋，僅陽盤（時/日/月/年盤皆算，判斷式固定用實際日干、時干，與 effGZ／PLATE_SUBMODE 無關）
-      // 不屬於 computeChart 範疇（需要日干這個獨立於局數/陰陽遁/干支之外的來源），維持在此判斷
-      const isWuBuYu = PLATE_MODE === 'yang' && WUBUYU_TABLE[dGZ[0]] === hGZ[0];
+      // 五不遇時：時剋日、同性相剋，僅時盤（時家/置閏）適用——日/月/年盤本來就不是用時柱起盤，
+      // 概念上不會有這個問題，跟奇門曆（lookupChartTime只在時盤路徑才算，見上方）一致，
+      // 也符合排盤規則.md十.3「僅時盤適用」。2026.09修正：原本這裡沒檢查PLATE_SUBMODE，
+      // 誤標成「時/日/月/年盤皆算」，導致日/月/年盤下也可能顯示五不遇時標記，
+      // 且會讓出行訣自動判斷（chart.isWuBuYu）在那些子模式下錯誤地整盤排除吉門
+      const isWuBuYu = PLATE_MODE === 'yang' && PLATE_SUBMODE === 'time' && WUBUYU_TABLE[dGZ[0]] === hGZ[0];
+      chart.isWuBuYu = isWuBuYu; // 存進chart物件，供出行訣「自動判斷」(autoMarkTravelLucky)透過
+      // _currentCastChart讀取——之前只是這裡的區域變數，出行訣那條路徑呼叫matchGates()時永遠拿不到，
+      // 導致五不遇時整個時辰本該無吉門可用，卻還是被自動標了吉，見排盤規則.md十.3
 
       // 排盤：顯示目前模式本身；命盤依性別顯示「男命盤／女命盤」；陽盤依子模式顯示 時家／日盤／月家／年家
       // （不含「置閏」，按鈕上已標明「時家（置閏）」，使用者選擇當下就知道，此處不必重複）；陰盤固定二字
@@ -9293,5 +9315,10 @@ function deleteRecord(id) {
   </div>
 </div><!-- end footer-stack -->
 </div><!-- end page -->
+  <!-- 2026.09新增：橫向鎖定提示遮罩，只在網頁版有作用（見CSS說明），App版靠Xcode原生設定 -->
+  <div id="landscape-lock-overlay">
+    <div class="icon">📱</div>
+    <div class="msg">請將手機轉回直向使用</div>
+  </div>
 </body>
 </html>
