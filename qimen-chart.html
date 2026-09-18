@@ -503,6 +503,12 @@
     align-items: flex-start;
     padding-top: 1px;
   }
+  /* 2026.09新增：指針固定角度時（不論南上或北上，兩者共用同一色，不特別區分）改藍色，
+     跟⟳鈕轉正後的藍色語意一致——藍＝「這不是即時真方位，是配合盤面固定的」；
+     即時跟隨裝置朝向轉動時維持原本紅白配色，代表「這是真的在追蹤方向」。
+     class切換見updateCompassLiveVisual()，只在出行訣地圖模式相關流程呼叫 */
+  .outer.compass-fixed-orientation .needle-s { background: #2471a3; color: #fff; }
+  .outer.compass-fixed-orientation .needle-n { background: #2471a3; color: #fff; }
 
   /* ── 十二長生標籤 ── */
   .dz9-label.stage-mu    { color: #d6408e; }
@@ -3045,7 +3051,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.18 v2';
+const APP_VERSION = '2026.09.18 v4';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -4362,7 +4368,7 @@ function requestCompassPermission(startFn, onReady) {
   }
 
   function handleOrientation(e) {
-    if (travelCompassFrozen) return; // 出行訣地圖模式期間指針凍結，改由 setTravelCompassOrientation 固定控制，不套用即時朝向
+    if (travelCompassFrozen && !travelCompassLiveTracking) return; // 出行訣地圖模式期間指針凍結，改由 setTravelCompassOrientation 固定控制，不套用即時朝向——除非使用者另外點指針切換成即時轉動（見 travelCompassLiveTracking）
     let heading = null;
     if (typeof e.webkitCompassHeading === 'number') {
       // iOS：webkitCompassHeading 已經是真實方位角，數值越準確
@@ -4381,16 +4387,17 @@ function requestCompassPermission(startFn, onReady) {
     window.addEventListener('deviceorientation', handleOrientation, true);
   }
 
-  // 2026.09改回兩次點：第一次點擊中宮只單純啟用指南針（跟陰盤／命盤行為一致，可用來對方位），
-  // 不再一併跳出行訣詢問泡泡；要進出行訣需要再點第二次（見下方click handler裡compassActive為true
-  // 且非地圖模式時的判斷式，那段本來就處理「第二次點擊詢問是否進入出行訣」，不需要另外新增）
-  function afterCompassEnabled() {}
+    function afterCompassEnabled() {}
 
   compassCell.addEventListener('click', function() {
-    // 羅盤已啟用 → 已在地圖模式中，再點指針不再有動作（跟陰盤/命盤指針行為一致）
     if (compassActive) {
       const outerEl = document.getElementById('outer-board');
       if (outerEl && outerEl.classList.contains('travel-map-mode')) {
+        // 2026.09新增：地圖模式下再點一次指針，切換「即時跟隨裝置朝向轉動」開/關，
+        // 跟⟳（旋轉九宮）完全獨立、互不干擾——關閉時收回固定角度（配合當下九宮南上/北上狀態）
+        travelCompassLiveTracking = !travelCompassLiveTracking;
+        if (!travelCompassLiveTracking) setTravelCompassOrientation(travelMapRotated);
+        updateCompassLiveVisual();
         return;
       }
       return;
@@ -5191,6 +5198,19 @@ function recenterInlineTravelPosition() {
 // 指針凍結旗標：出行訣地圖模式期間指針改跟九宮方位固定，不跟即時裝置朝向連動；
 // 供下方指南針 IIFE 的 handleOrientation 讀取判斷是否要略過這次即時朝向更新。
 let travelCompassFrozen = false;
+// 2026.09新增：地圖模式下再點一次指針可切換的「即時跟隨裝置朝向」開關，跟travelCompassFrozen
+// 是不同維度——frozen決定「在不在地圖模式」，這個決定「地圖模式下要不要暫時忽略frozen、
+// 照樣套用即時朝向」。進地圖模式、或按⟳鈕（旋轉九宮）時都會重置回false（見enterTravelMapMode、
+// toggleTravelMapRotate），每次都是乾淨狀態，不會跨情境殘留。
+let travelCompassLiveTracking = false;
+
+// 2026.09新增：統一在這裡切換指針顏色class，供frozen/liveTracking任何一個狀態改變的地方呼叫，
+// 不在各處各自重寫一次判斷式。固定角度（frozen且非live）＝藍色；即時轉動或未凍結＝原本紅白配色
+function updateCompassLiveVisual() {
+  const outerEl = document.getElementById('outer-board');
+  if (!outerEl) return;
+  outerEl.classList.toggle('compass-fixed-orientation', travelCompassFrozen && !travelCompassLiveTracking);
+}
 
 // 指針固定朝向：rotated=false（預設南上北下）→ rotate(0deg)（S在上，即指針原始未旋轉狀態，本就對準南）；
 // rotated=true（旋轉鈕轉正後、北上南下）→ rotate(180deg)（翻面，N在上）
@@ -5222,6 +5242,8 @@ function enterTravelMapMode() {
   showTravelMarkHouses(false);
   // 指針凍結：地圖模式期間指針不跟即時裝置朝向連動，改固定跟著九宮方位（見 setTravelCompassOrientation）
   travelCompassFrozen = true;
+  travelCompassLiveTracking = false; // 每次重新進地圖模式，即時轉動開關重置成關（見該變數宣告處說明）
+  updateCompassLiveVisual();
   setTravelCompassOrientation(travelMapRotated);
   // wrap 剛從 display:none 切換出來，Leaflet 量測容器尺寸需等下一輪事件循環才準確
   setTimeout(function() {
@@ -5249,6 +5271,7 @@ function exitTravelMapMode() {
     if (markEl) markEl.style.display = 'none';
   });
   travelCompassFrozen = false; // 解凍，指針恢復跟隨即時裝置朝向（若羅盤本來就是啟用狀態，下一個朝向事件會自動接手）
+  updateCompassLiveVisual(); // 離開地圖模式，指針顏色也一併恢復原本紅白配色
   // 離開出行訣模式，恢復紀錄按鈕顯示（跟toggleAlmanacMode同一套currentMode判斷，
   // 保險起見不寫死''，避免萬一離開時currentMode不是'chart'的邊界情況）
   const recBtn = document.getElementById('btn-records');
@@ -5382,6 +5405,8 @@ function toggleTravelMapRotate() {
   swapYiganPosition(7, 3);
   swapTravelBranchRing();
   // 指針跟著同步翻面（凍結狀態下才有意義；地圖模式外呼叫此函式的路徑目前不存在，此行為安全）
+  travelCompassLiveTracking = false; // 2026.09：按⟳鈕時一併重置即時轉動開關，回到跟著九宮方位固定
+  updateCompassLiveVisual();
   setTravelCompassOrientation(travelMapRotated);
 }
 
