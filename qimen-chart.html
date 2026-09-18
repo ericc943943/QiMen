@@ -2488,14 +2488,10 @@
 
     <!-- 5 中 -->
     <div class="cell center">
-    <!-- 出行訣：三個確認/提示泡泡都疊在中宮正中央（.cell.center 是定位基準，見 CSS），共用同一種小型泡泡樣式 -->
-    <div class="travel-marking-banner" id="travel-ask-panel">
-      <span>確定載入出行訣圖資？</span>
-      <div class="travel-marking-actions">
-        <button type="button" class="travel-marking-cancel"  onclick="confirmTravelAsk(false)" aria-label="否">✕</button>
-        <button type="button" class="travel-marking-confirm" onclick="confirmTravelAsk(true)" aria-label="是">✓</button>
-      </div>
-    </div>
+    <!-- 出行訣：確認/提示泡泡疊在中宮正中央（.cell.center 是定位基準，見 CSS），共用同一種小型泡泡樣式 -->
+    <!-- 2026.09復原：原本這裡還有#travel-ask-panel「確定載入出行訣圖資？」的詢問泡泡，
+         指針點擊改回合併行為（見compassCell click handler／enterTravelModeFully）後，
+         不再需要這一步額外確認，已移除 -->
     <div class="travel-marking-banner" id="yang-submode-confirm">
       <span>切換將重置盤面與吉凶標記。</span>
       <div class="travel-marking-actions">
@@ -2503,8 +2499,8 @@
         <button type="button" class="travel-marking-confirm" onclick="confirmYangSubSwitch()" aria-label="是">✓</button>
       </div>
     </div>
-    <!-- 回到置中泡泡版型（跟travel-ask-panel／yang-submode-confirm同款），
-         只留一顆綠色✓當確認提醒鈕，拿掉取消鈕——地圖與標記現在從confirmTravelAsk就同步進入，
+    <!-- 回到置中泡泡版型（跟yang-submode-confirm同款），
+         只留一顆綠色✓當確認提醒鈕，拿掉取消鈕——地圖與標記現在從enterTravelModeFully就同步進入，
          這顆✓純粹只是關掉提示本身，不影響任何標記資料或地圖狀態（見dismissTravelMarkingHint） -->
     <div class="travel-marking-banner" id="travel-marking-banner">
       <span>吉門已自動標記，請確認。</span>
@@ -3049,7 +3045,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.18 v1';
+const APP_VERSION = '2026.09.18 v2';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -4391,24 +4387,24 @@ function requestCompassPermission(startFn, onReady) {
   function afterCompassEnabled() {}
 
   compassCell.addEventListener('click', function() {
-    // 羅盤已啟用 → 這次點擊不是要開權限，而是詢問是否進入出行訣吉凶標記模式（陽盤）或單純無動作（陰盤／命盤）
+    // 羅盤已啟用 → 已在地圖模式中，再點指針不再有動作（跟陰盤/命盤指針行為一致）
     if (compassActive) {
-      // 2026.09：旋轉改由獨立的.travel-inline-rotate鈕負責（見HTML/JS該按鈕的click listener），
-      // 指針恢復成單純的羅盤授權/啟動，地圖模式下再點指針不再有動作，跟陰盤/命盤指針行為一致
       const outerEl = document.getElementById('outer-board');
       if (outerEl && outerEl.classList.contains('travel-map-mode')) {
         return;
       }
-      // 移除：原本這裡還有「if (travelMarkingActive) return;」，但標記狀態現在跟travel-map-mode
-      // 永遠同進同出（見travelMarkEditable說明），上面那個判斷式已經會攔到，這行是打不到的死碼，故拿掉
-      // 出行訣開放給所有陽盤（時/日/月/年家皆可）；僅陰盤、命盤不適用；兩者都永遠不會進出行訣，直接不反應，不跳提示
-      if (typeof PLATE_MODE === 'undefined' || PLATE_MODE !== 'yang' || (typeof MING_PAN_MODE !== 'undefined' && MING_PAN_MODE)) {
-        return;
-      }
-      showTravelAskPanel();
       return;
     }
-    requestCompassPermission(startCompass, afterCompassEnabled);
+    // 2026.09復原（先前曾拆成「先啟動羅盤→再問是否進出行訣」兩次點擊，此次應Eric要求改回
+    // 原始的合併行為）：陽盤（時/日/月/年家皆可，命盤不算）點擊指針，直接同步啟動羅盤＋
+    // 進出行訣＋自動標記吉門，不再另外跳出「確定載入出行訣圖資？」的詢問泡泡；
+    // 陰盤／命盤維持單純啟動羅盤，不會有任何出行訣相關動作
+    const isYangEligible = typeof PLATE_MODE !== 'undefined' && PLATE_MODE === 'yang' && !(typeof MING_PAN_MODE !== 'undefined' && MING_PAN_MODE);
+    if (isYangEligible) {
+      requestCompassPermission(startCompass, enterTravelModeFully);
+    } else {
+      requestCompassPermission(startCompass, afterCompassEnabled);
+    }
   });
 
   // 把compassActive／startCompass暴露到全域，供輸入區右上角的出行訣捷徑鈕
@@ -4470,9 +4466,7 @@ function jumpToTravelFullscreen() {
     return;
   }
   function proceedToTravelMode() {
-    enterTravelMarkingMode();
-    enterTravelMapMode();
-    setTravelBoardVisible(true); // 沿用confirmTravelAsk同一套三步驟（見該函式）
+    enterTravelModeFully(); // 共用（見該函式定義，跟指針合併點擊同一套三步驟）
     openTravelMode();
   }
   const compass = window.__travelCompass;
@@ -4517,7 +4511,7 @@ TRAVEL_MARK_HOUSES.forEach(h => { travelMarks[h] = null; });
 // 每次castChart()跑完就覆蓋更新，只反映「畫面上目前顯示的盤」，跟排出的盤永遠同步。
 let _currentCastChart = null;
 
-// 簡化：原本有獨立的 travelMarkingActive 變數判斷「標記模式開了沒」，但confirmTravelAsk
+// 簡化：原本有獨立的 travelMarkingActive 變數判斷「標記模式開了沒」，但enterTravelModeFully
 // 改成一次同時觸發enterTravelMarkingMode()＋enterTravelMapMode()（見該函式），exitTravelMapMode()
 // 離開時也一併收尾標記狀態——兩者現在永遠同進同出，沒有任何路徑會讓其中一個開、另一個關，
 // 拆成兩個變數已經是歷史包袱、沒有實際好處，故移除travelMarkingActive，只留「地圖模式＋盤面顯示」
@@ -4527,23 +4521,18 @@ function travelMarkEditable() {
   return !!(outer && outer.classList.contains('travel-map-mode') && outer.classList.contains('board-visible'));
 }
 
-function showTravelAskPanel() {
-  document.getElementById('travel-ask-panel').classList.add('is-open');
-}
-function hideTravelAskPanel() {
-  document.getElementById('travel-ask-panel').classList.remove('is-open');
-}
-function confirmTravelAsk(yes) {
-  hideTravelAskPanel();
-  if (yes) {
-    enterTravelMarkingMode();
-    // 可觀察到標記畫面其實跟後面「地圖模式＋顯示盤面」視覺上是同一種畫面，
-    // 不需要等標記完成才載入地圖——改成一確認要進出行訣，就同步把地圖背景叫出來，
-    // 標記全程都能看到地圖（board-visible讓盤面疊在地圖上方，宮位維持可點擊，見CSS
-    // .outer.travel-map-mode.board-visible .cell[data-gong] 那條規則）
-    enterTravelMapMode();
-    setTravelBoardVisible(true); // 共用setTravelBoardVisible（見toggleTravelBoardOverlay），不再手動重寫一次
-  }
+// 2026.09復原：原本的confirmTravelAsk(yes)／showTravelAskPanel／hideTravelAskPanel整組詢問泡泡
+// 已移除（指針點擊改回合併行為，不再需要「是否確定進出行訣」這一步確認，見compassCell click handler）。
+// 這個函式取代原本confirmTravelAsk(true)裡的三步驟，供指針合併點擊、jumpToTravelFullscreen兩處共用，
+// 避免各自重寫一次同樣的邏輯（呼叫時機：羅盤剛啟動完成、或已確認要進出行訣的當下）
+function enterTravelModeFully() {
+  // 可觀察到標記畫面其實跟後面「地圖模式＋顯示盤面」視覺上是同一種畫面，
+  // 不需要等標記完成才載入地圖——同步把地圖背景叫出來，標記全程都能看到地圖
+  // （board-visible讓盤面疊在地圖上方，宮位維持可點擊，見CSS
+  // .outer.travel-map-mode.board-visible .cell[data-gong] 那條規則）
+  enterTravelMarkingMode();
+  enterTravelMapMode();
+  setTravelBoardVisible(true); // 共用setTravelBoardVisible（見toggleTravelBoardOverlay），不再手動重寫一次
 }
 
 function renderTravelMark(house) {
@@ -4721,7 +4710,7 @@ function reCastTravelNow() {
 
 function enterTravelMarkingMode() {
   // 移除：原本這裡有「if (travelMarkingActive) return;」防重入，但travelMarkingActive變數
-  // 已移除（見上方travelMarkEditable說明）；此函式現在只有confirmTravelAsk一個呼叫來源，
+  // 已移除（見上方travelMarkEditable說明）；此函式現在統一透過enterTravelModeFully()呼叫，
   // 且該路徑本身已經被compassCell點擊處理擋掉「已在地圖模式中」的重複觸發，不會重入，故不需要另外防呆
   // 進入出行訣標記：宮位點擊改切換吉凶用途，先清掉十二長生原本可能留著的高亮／內容，避免混在一起
   document.querySelectorAll('.gc-tian .stem-active, .gc-shen .stem-active, .gc-di .stem-active').forEach(s => s.classList.remove('stem-active'));
@@ -4775,7 +4764,7 @@ TRAVEL_MARK_HOUSES.forEach(h => {
 });
 
 // ══════════════════════════════════
-// 出行訣 階段二 2a：方框內嵌地圖（現在從confirmTravelAsk確認進出行訣那一刻就同步觸發，
+// 出行訣 階段二 2a：方框內嵌地圖（現在從enterTravelModeFully確認進出行訣那一刻就同步觸發，
 // 不再等標記完成，見該函式，固定在原九宮框範圍內）
 // ══════════════════════════════════
 let inlineTravelMap = null;
@@ -5270,7 +5259,7 @@ function exitTravelMapMode() {
 }
 
 // 抽出共用函式，供「盤」鈕（toggleTravelBoardOverlay，需要toggle切換）與
-// confirmTravelAsk（進出行訣時需要明確設成true，不是toggle）共用，避免兩處各自重寫一次同樣的邏輯
+// enterTravelModeFully（進出行訣時需要明確設成true，不是toggle）共用，避免兩處各自重寫一次同樣的邏輯
 function setTravelBoardVisible(visible) {
   const outer = document.getElementById('outer-board');
   const btn = document.getElementById('travel-inline-board-toggle');
@@ -7435,24 +7424,14 @@ function setupTravelInputAutoBlur(popupId, inputId) {
 setupTravelInputAutoBlur('travel-search-popup', 'travel-search-input');
 setupTravelInputAutoBlur('travel-address-naming-popup', 'travel-address-naming-input');
 
-// 2026.09修正（第二次套用——先前修正在後續開發中被舊版覆蓋掉了，見2026.09.18對話記錄）：
-// 原本只看「當下高度是否>85%」就blur，會誤傷「剛點下輸入框、鍵盤還沒彈出來」的正常情形
-// ——此時高度本來就還是接近滿版，若這時剛好多觸發一次resize（彈窗展開動畫、地址列收合等
-// 常見成因），會被誤判成「鍵盤剛被手勢收起」，焦點才剛拿到就被blur掉，鍵盤永遠彈不出來
-// （症狀：短按輸入框沒反應，要快速點兩下或長按才叫得出鍵盤）。
-// 改成要求「先偵測到真的變矮過（鍵盤真的開過），之後才又彈回高的」兩段式判斷，
-// 單純一次性的高度快照不再足以觸發blur，必須是完整的「下沉→回彈」過程。
-let travelViewportWasCompact = false;
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', function() {
     const active = document.activeElement;
-    if (!active || (active.id !== 'travel-search-input' && active.id !== 'travel-address-naming-input')) {
-      travelViewportWasCompact = false; // 焦點不在目標輸入框，重置狀態，避免殘留影響下次開啟
-      return;
-    }
-    const ratio = window.visualViewport.height / window.innerHeight;
-    if (ratio <= 0.85) { travelViewportWasCompact = true; return; } // 偵測到視窗真的被壓縮（鍵盤開啟中）
-    if (travelViewportWasCompact) { travelViewportWasCompact = false; active.blur(); } // 曾經壓縮過、現在又彈回來，才視為手勢收鍵盤
+    if (!active || (active.id !== 'travel-search-input' && active.id !== 'travel-address-naming-input')) return;
+    // viewport高度回到接近全螢幕（跟window.innerHeight相差不多）代表鍵盤已收起，
+    // 不論是怎麼收起的（含手勢下滑那種不會觸發blur事件的情形），此時焦點還留在
+    // 我們的輸入框上就沒有意義了，直接釋放
+    if (window.visualViewport.height > window.innerHeight * 0.85) active.blur();
   });
 }
 
