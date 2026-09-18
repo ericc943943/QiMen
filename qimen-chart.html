@@ -3049,7 +3049,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.08 v2';
+const APP_VERSION = '2026.09.18 v1';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -7435,14 +7435,24 @@ function setupTravelInputAutoBlur(popupId, inputId) {
 setupTravelInputAutoBlur('travel-search-popup', 'travel-search-input');
 setupTravelInputAutoBlur('travel-address-naming-popup', 'travel-address-naming-input');
 
+// 2026.09修正（第二次套用——先前修正在後續開發中被舊版覆蓋掉了，見2026.09.18對話記錄）：
+// 原本只看「當下高度是否>85%」就blur，會誤傷「剛點下輸入框、鍵盤還沒彈出來」的正常情形
+// ——此時高度本來就還是接近滿版，若這時剛好多觸發一次resize（彈窗展開動畫、地址列收合等
+// 常見成因），會被誤判成「鍵盤剛被手勢收起」，焦點才剛拿到就被blur掉，鍵盤永遠彈不出來
+// （症狀：短按輸入框沒反應，要快速點兩下或長按才叫得出鍵盤）。
+// 改成要求「先偵測到真的變矮過（鍵盤真的開過），之後才又彈回高的」兩段式判斷，
+// 單純一次性的高度快照不再足以觸發blur，必須是完整的「下沉→回彈」過程。
+let travelViewportWasCompact = false;
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', function() {
     const active = document.activeElement;
-    if (!active || (active.id !== 'travel-search-input' && active.id !== 'travel-address-naming-input')) return;
-    // viewport高度回到接近全螢幕（跟window.innerHeight相差不多）代表鍵盤已收起，
-    // 不論是怎麼收起的（含手勢下滑那種不會觸發blur事件的情形），此時焦點還留在
-    // 我們的輸入框上就沒有意義了，直接釋放
-    if (window.visualViewport.height > window.innerHeight * 0.85) active.blur();
+    if (!active || (active.id !== 'travel-search-input' && active.id !== 'travel-address-naming-input')) {
+      travelViewportWasCompact = false; // 焦點不在目標輸入框，重置狀態，避免殘留影響下次開啟
+      return;
+    }
+    const ratio = window.visualViewport.height / window.innerHeight;
+    if (ratio <= 0.85) { travelViewportWasCompact = true; return; } // 偵測到視窗真的被壓縮（鍵盤開啟中）
+    if (travelViewportWasCompact) { travelViewportWasCompact = false; active.blur(); } // 曾經壓縮過、現在又彈回來，才視為手勢收鍵盤
   });
 }
 
