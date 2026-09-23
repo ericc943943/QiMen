@@ -3062,7 +3062,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.23 v4';
+const APP_VERSION = '2026.09.23 v7';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -4376,12 +4376,9 @@ function requestCompassPermission(startFn, onReady) {
     // 排盤圖是離9(南)在上方，不是一般地圖的北在上方，所以這裡要對準「南」而非「北」
     const southHeading = (heading + 180) % 360;
     compassRing.style.transform = `rotate(${-southHeading}deg)`;
-    window.__debugLastHeading = heading; // 暫時除錯用：記錄事件本身帶的角度數值，確認是不是數值本身卡住不動
-    window.__debugLastAppliedTransform = compassRing.style.transform; // 暫時除錯用：確認style真的有被寫入
   }
 
   function handleOrientation(e) {
-    window.__debugOrientationEventCount = (window.__debugOrientationEventCount || 0) + 1; // 暫時除錯用：計算事件到底有沒有進來，見updateDebugCompassReadout
     if (travelCompassFrozen && !travelCompassLiveTracking) return; // 出行訣地圖模式期間指針凍結，改由 setTravelCompassOrientation 固定控制，不套用即時朝向——除非使用者另外點指針切換成即時轉動（見 travelCompassLiveTracking）
     let heading = null;
     if (typeof e.webkitCompassHeading === 'number') {
@@ -4404,7 +4401,6 @@ function requestCompassPermission(startFn, onReady) {
     function afterCompassEnabled() {}
 
   compassCell.addEventListener('click', function() {
-    window.__debugLastClickState = 'compassActive=' + compassActive + ' PLATE_MODE=' + PLATE_MODE + ' frozen=' + travelCompassFrozen; // 暫時除錯用
     if (compassActive) {
       const outerEl = document.getElementById('outer-board');
       if (outerEl && outerEl.classList.contains('travel-map-mode')) {
@@ -4444,26 +4440,6 @@ function requestCompassPermission(startFn, onReady) {
     start: startCompass
   };
 })();
-
-// 2026.09暫時新增（除錯用）：畫面左下角顯示羅盤關鍵狀態，供排查「陽盤切回陰盤指針不動」
-// 這個問題用——確認問題解決、資料蒐集完後這整段連同HTML裡的#debug-compass-readout要一併移除
-setInterval(function() {
-  const el = document.getElementById('debug-compass-readout');
-  if (!el) return;
-  const outer = document.getElementById('outer-board');
-  const inMap = outer ? outer.classList.contains('travel-map-mode') : false;
-  el.textContent =
-    'compassActive=' + (window.__travelCompass ? window.__travelCompass.active : '?') +
-    ' PLATE_MODE=' + (typeof PLATE_MODE !== 'undefined' ? PLATE_MODE : '?') +
-    ' inMapMode=' + inMap +
-    ' frozen=' + (typeof travelCompassFrozen !== 'undefined' ? travelCompassFrozen : '?') +
-    ' liveTrack=' + (typeof travelCompassLiveTracking !== 'undefined' ? travelCompassLiveTracking : '?') +
-    '\n orientEvt次數=' + (window.__debugOrientationEventCount || 0) +
-    '\n 最新heading值=' + (window.__debugLastHeading !== undefined ? window.__debugLastHeading : '(尚無事件)') +
-    '\n 實際套用transform=' + (window.__debugLastAppliedTransform || '(尚無)') +
-    '\n compassRing現在的transform=' + (document.getElementById('compassRing') ? document.getElementById('compassRing').style.transform : '(找不到元素)') +
-    '\n 上次點擊時狀態=' + (window.__debugLastClickState || '(尚未點擊)');
-}, 500);
 
 // 出行訣捷徑鈕（輸入區右上角）——直接跳全螢幕出行訣地圖，等同「點中宮啟用羅盤→
 // 確認進出行訣→點展開全螢幕」這一串動作的濃縮版，中間跳過「確定載入出行訣圖資？」的詢問泡泡
@@ -5255,6 +5231,18 @@ function updateCompassLiveVisual() {
   outerEl.classList.toggle('compass-fixed-orientation', travelCompassFrozen && !travelCompassLiveTracking);
 }
 
+// 2026.09新增：集中重置出行訣地圖模式相關的羅盤子狀態（凍結／即時轉動開關／顏色），
+// 供離開地圖模式時統一呼叫（見exitTravelMapMode，這是唯一呼叫點——「←返回盤面」、切到奇門曆、
+// 陰陽盤/命盤切換這幾條離開地圖模式的路徑最終都會經過exitTravelMapMode，故不需要在其他
+// 地方，如applyPlateMode，重複呼叫，那樣只會是空動作或重複執行，見討論記錄）。
+// 原本travelCompassLiveTracking漏了在exitTravelMapMode重置，才發生「陽盤切回陰盤指針卡住」
+// 的bug——改成集中管理，以後若再新增其他羅盤子狀態變數，只需要在這裡加一行
+function resetTravelCompassSubState() {
+  travelCompassFrozen = false;
+  travelCompassLiveTracking = false;
+  updateCompassLiveVisual();
+}
+
 // 指針固定朝向：rotated=false（預設南上北下）→ rotate(0deg)（S在上，即指針原始未旋轉狀態，本就對準南）；
 // rotated=true（旋轉鈕轉正後、北上南下）→ rotate(180deg)（翻面，N在上）
 function setTravelCompassOrientation(rotated) {
@@ -5313,11 +5301,7 @@ function exitTravelMapMode() {
     const markEl = document.getElementById('travel-mark-' + h);
     if (markEl) markEl.style.display = 'none';
   });
-  travelCompassFrozen = false; // 解凍，指針恢復跟隨即時裝置朝向（若羅盤本來就是啟用狀態，下一個朝向事件會自動接手）
-  travelCompassLiveTracking = false; // 2026.09修正：離開地圖模式也要重置這個旗標，原本只在enterTravelMapMode／
-  // toggleTravelMapRotate重置，漏了exitTravelMapMode這一條路徑，導致地圖模式內開過即時轉動後，
-  // 離開地圖模式切別的盤別，這個旗標會殘留true（雖經確認不會直接卡住轉動，但仍是明確的狀態漏洞，見討論記錄）
-  updateCompassLiveVisual(); // 離開地圖模式，指針顏色也一併恢復原本紅白配色
+  resetTravelCompassSubState(); // 解凍＋清即時轉動開關＋恢復指針顏色，集中管理（見該函式）
   // 離開出行訣模式，恢復紀錄按鈕顯示（跟toggleAlmanacMode同一套currentMode判斷，
   // 保險起見不寫死''，避免萬一離開時currentMode不是'chart'的邊界情況）
   const recBtn = document.getElementById('btn-records');
@@ -9459,7 +9443,5 @@ function deleteRecord(id) {
   </div>
 </div><!-- end footer-stack -->
 </div><!-- end page -->
-<!-- 2026.09暫時新增（除錯用）：見上方script裡的setInterval說明，排查完問題後這個div要一併移除 -->
-<div id="debug-compass-readout" style="position:fixed;bottom:4px;left:4px;z-index:999999;background:rgba(0,0,0,.8);color:#0f0;font-size:10px;line-height:1.4;padding:6px 8px;border-radius:6px;white-space:pre-wrap;pointer-events:none;max-width:90vw;"></div>
 </body>
 </html>
