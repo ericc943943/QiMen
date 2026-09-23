@@ -3062,7 +3062,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.23 v1';
+const APP_VERSION = '2026.09.23 v2';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -4379,6 +4379,7 @@ function requestCompassPermission(startFn, onReady) {
   }
 
   function handleOrientation(e) {
+    window.__debugOrientationEventCount = (window.__debugOrientationEventCount || 0) + 1; // 暫時除錯用：計算事件到底有沒有進來，見updateDebugCompassReadout
     if (travelCompassFrozen && !travelCompassLiveTracking) return; // 出行訣地圖模式期間指針凍結，改由 setTravelCompassOrientation 固定控制，不套用即時朝向——除非使用者另外點指針切換成即時轉動（見 travelCompassLiveTracking）
     let heading = null;
     if (typeof e.webkitCompassHeading === 'number') {
@@ -4401,6 +4402,7 @@ function requestCompassPermission(startFn, onReady) {
     function afterCompassEnabled() {}
 
   compassCell.addEventListener('click', function() {
+    window.__debugLastClickState = 'compassActive=' + compassActive + ' PLATE_MODE=' + PLATE_MODE + ' frozen=' + travelCompassFrozen; // 暫時除錯用
     if (compassActive) {
       const outerEl = document.getElementById('outer-board');
       if (outerEl && outerEl.classList.contains('travel-map-mode')) {
@@ -4440,6 +4442,23 @@ function requestCompassPermission(startFn, onReady) {
     start: startCompass
   };
 })();
+
+// 2026.09暫時新增（除錯用）：畫面左下角顯示羅盤關鍵狀態，供排查「陽盤切回陰盤指針不動」
+// 這個問題用——確認問題解決、資料蒐集完後這整段連同HTML裡的#debug-compass-readout要一併移除
+setInterval(function() {
+  const el = document.getElementById('debug-compass-readout');
+  if (!el) return;
+  const outer = document.getElementById('outer-board');
+  const inMap = outer ? outer.classList.contains('travel-map-mode') : false;
+  el.textContent =
+    'compassActive=' + (window.__travelCompass ? window.__travelCompass.active : '?') +
+    ' PLATE_MODE=' + (typeof PLATE_MODE !== 'undefined' ? PLATE_MODE : '?') +
+    ' inMapMode=' + inMap +
+    ' frozen=' + (typeof travelCompassFrozen !== 'undefined' ? travelCompassFrozen : '?') +
+    ' liveTrack=' + (typeof travelCompassLiveTracking !== 'undefined' ? travelCompassLiveTracking : '?') +
+    '\n orientEvt次數=' + (window.__debugOrientationEventCount || 0) +
+    '\n 上次點擊時狀態=' + (window.__debugLastClickState || '(尚未點擊)');
+}, 500);
 
 // 出行訣捷徑鈕（輸入區右上角）——直接跳全螢幕出行訣地圖，等同「點中宮啟用羅盤→
 // 確認進出行訣→點展開全螢幕」這一串動作的濃縮版，中間跳過「確定載入出行訣圖資？」的詢問泡泡
@@ -9432,5 +9451,7 @@ function deleteRecord(id) {
   </div>
 </div><!-- end footer-stack -->
 </div><!-- end page -->
+<!-- 2026.09暫時新增（除錯用）：見上方script裡的setInterval說明，排查完問題後這個div要一併移除 -->
+<div id="debug-compass-readout" style="position:fixed;bottom:4px;left:4px;z-index:999999;background:rgba(0,0,0,.8);color:#0f0;font-size:10px;line-height:1.4;padding:6px 8px;border-radius:6px;white-space:pre-wrap;pointer-events:none;max-width:90vw;"></div>
 </body>
 </html>
