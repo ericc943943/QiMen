@@ -3062,7 +3062,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.23 v3';
+const APP_VERSION = '2026.09.23 v4';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -5314,6 +5314,9 @@ function exitTravelMapMode() {
     if (markEl) markEl.style.display = 'none';
   });
   travelCompassFrozen = false; // 解凍，指針恢復跟隨即時裝置朝向（若羅盤本來就是啟用狀態，下一個朝向事件會自動接手）
+  travelCompassLiveTracking = false; // 2026.09修正：離開地圖模式也要重置這個旗標，原本只在enterTravelMapMode／
+  // toggleTravelMapRotate重置，漏了exitTravelMapMode這一條路徑，導致地圖模式內開過即時轉動後，
+  // 離開地圖模式切別的盤別，這個旗標會殘留true（雖經確認不會直接卡住轉動，但仍是明確的狀態漏洞，見討論記錄）
   updateCompassLiveVisual(); // 離開地圖模式，指針顏色也一併恢復原本紅白配色
   // 離開出行訣模式，恢復紀錄按鈕顯示（跟toggleAlmanacMode同一套currentMode判斷，
   // 保險起見不寫死''，避免萬一離開時currentMode不是'chart'的邊界情況）
