@@ -3062,7 +3062,7 @@
 // 方便Eric日後比對截圖/對話記錄時辨認是哪個版本。格式沿用開發準則.md同一套
 // 「yyyy.mm.dd vN」慣例（同一天多次修訂就遞增N），不是語意化版號（semver），
 // 純粹對應「今天第幾次交付」，跟開發準則.md的版本號是各自獨立的兩件事，不用同步。
-const APP_VERSION = '2026.09.22 v1';
+const APP_VERSION = '2026.09.23 v1';
 
 // 奇門曆模式：輸入區＋盤頭。函式/變數統一加Almanac字首，避免跟單次排盤邏輯（castChart等）撞名。
 const almanacPad2 = n => String(n).padStart(2,'0');
@@ -4411,6 +4411,14 @@ function requestCompassPermission(startFn, onReady) {
         updateCompassLiveVisual();
         return;
       }
+      // 2026.09修正：compassActive從不會在切換陰陽盤時重置（羅盤一旦啟用過，這個旗標終場
+      // 都是true），原本這裡遇到「已啟用但不在地圖模式」一律當no-op直接return，隱含假設是
+      // 「陽盤點指針時如果已啟用，那一定代表已經在地圖模式」——但陰盤啟動羅盤後切到陽盤，
+      // 這個假設就不成立：羅盤確實已啟用（裝置方向監聽仍在跑），只是還沒進出行訣。
+      // 修正：這裡才第一次補判斷陽盤資格，符合的話直接進出行訣（不用重新走requestCompassPermission
+      // ／startCompass，羅盤本來就在跑了），不符合（陰盤/命盤）才維持原本的no-op
+      const isYangEligibleNow = typeof PLATE_MODE !== 'undefined' && PLATE_MODE === 'yang' && !(typeof MING_PAN_MODE !== 'undefined' && MING_PAN_MODE);
+      if (isYangEligibleNow) { enterTravelModeFully(); }
       return;
     }
     // 2026.09復原（先前曾拆成「先啟動羅盤→再問是否進出行訣」兩次點擊，此次應Eric要求改回
